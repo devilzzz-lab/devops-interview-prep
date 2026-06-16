@@ -11,9 +11,9 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 | # | Topic | Type | Status |
 |---|-------|------|--------|
 | [Ex 02](./exercises/ex02-iam-irsa-failure/) | IAM / IRSA Failure | Troubleshooting | ✅ |
-| [Ex 03](./exercises/ex03-argocd-outsync/) | ArgoCD OutOfSync Production | Troubleshooting | 🔲 |
+| [Ex 03](./exercises/ex03-argocd-outsync/) | ArgoCD OutOfSync Production | Troubleshooting | ✅ |
 | [Ex 04](./exercises/ex04-external-secrets-failure/) | External Secrets Failure | Troubleshooting | 🔲 |
-| [Ex 05](./exercises/ex05-helm-upgrade-failure/) | Helm Upgrade Failure | Troubleshooting | 🔲 |
+| [Ex 05](./exercises/ex05-helm-upgrade-failure/) | Helm Upgrade Failure | Troubleshooting | ✅ |
 | [Ex 06](./exercises/ex06-hpa-autoscaler-failure/) | HPA + Cluster Autoscaler Failure | Troubleshooting | 🔲 |
 | [Ex 09](./exercises/ex09-prometheus-failure/) | Prometheus Monitoring Failure | Troubleshooting | 🔲 |
 | [Ex 11](./exercises/ex11-crashloopbackoff/) | CrashLoopBackOff Investigation | Troubleshooting | 🔲 |
