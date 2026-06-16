@@ -10,7 +10,7 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 
 | # | Topic | Type | Status |
 |---|-------|------|--------|
-| [Ex 02](./exercises/ex02-iam-irsa-failure/) | IAM / IRSA Failure | Troubleshooting | ✅ |
+| [Ex 02](./exercises/ex02-iam-irsa-failure/README.md) | IAM / IRSA Failure | Troubleshooting | ✅ |
 | [Ex 03](./exercises/ex03-argocd-outsync/) | ArgoCD OutOfSync Production | Troubleshooting | 🔲 |
 | [Ex 04](./exercises/ex04-external-secrets-failure/) | External Secrets Failure | Troubleshooting | 🔲 |
 | [Ex 05](./exercises/ex05-helm-upgrade-failure/) | Helm Upgrade Failure | Troubleshooting | 🔲 |
