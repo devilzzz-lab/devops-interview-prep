@@ -78,7 +78,7 @@ replicaCount: 2
 
 image:
   repository: nginx
-  tag: "1.0.0"
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 service:
@@ -145,8 +145,6 @@ stringData:
 ---
 
 ## Step 6 — templates/deployment.yaml
-
-Key sections explained:
 
 ```yaml
 apiVersion: apps/v1
@@ -472,24 +470,46 @@ Successfully packaged chart and saved it to: payment-service-1.0.0.tgz
 
 ---
 
-## Step 14 — Install locally (Docker Desktop or minikube)
+## Step 14 — Create namespaces and install each environment
 
-Check your context first:
-
-```bash
-kubectl config current-context
-```
-
-Expected (Docker Desktop):
-
-```
-docker-desktop
-```
-
-Install dev:
+### Create namespaces first
 
 ```bash
-helm install payment-service . -f values-dev.yaml
+kubectl create namespace dev
+kubectl create namespace qa
+kubectl create namespace prod
+```
+
+Expected:
+
+```
+namespace/dev created
+namespace/qa created
+namespace/prod created
+```
+
+Verify:
+
+```bash
+kubectl get ns | grep -E "dev|qa|prod"
+```
+
+Expected:
+
+```
+dev     Active   5s
+qa      Active   5s
+prod    Active   5s
+```
+
+---
+
+### Install Dev
+
+```bash
+helm install payment-service . \
+  -f values-dev.yaml \
+  --namespace dev
 ```
 
 Expected:
@@ -500,20 +520,20 @@ STATUS: deployed
 REVISION: 1
 ```
 
-Verify resources created:
+Verify:
 
 ```bash
-kubectl get all
+kubectl get all -n dev
 ```
 
 Expected:
 
 ```
-NAME                                   READY   STATUS    RESTARTS
-pod/payment-service-abc123             1/1     Running   0
+NAME                                    READY   STATUS    RESTARTS
+pod/payment-service-xxxxxxx-xxxxx       1/1     Running   0
 
-NAME                      TYPE        CLUSTER-IP     PORT(S)
-service/payment-service   ClusterIP   10.96.x.x      80/TCP
+NAME                      TYPE        CLUSTER-IP    PORT(S)
+service/payment-service   ClusterIP   10.96.x.x     80/TCP
 
 NAME                              READY   UP-TO-DATE   AVAILABLE
 deployment.apps/payment-service   1/1     1            1
@@ -521,18 +541,272 @@ deployment.apps/payment-service   1/1     1            1
 
 ---
 
-## Step 15 — Upgrade test
-
-Change replica count and upgrade:
+### Install QA
 
 ```bash
-helm upgrade payment-service . -f values-dev.yaml --set replicaCount=3
+helm install payment-service . \
+  -f values-qa.yaml \
+  --namespace qa
+```
+
+Expected:
+
+```
+NAME: payment-service
+STATUS: deployed
+REVISION: 1
 ```
 
 Verify:
 
 ```bash
-kubectl get deploy
+kubectl get all -n qa
+```
+
+Expected:
+
+```
+NAME                                    READY   STATUS    RESTARTS
+pod/payment-service-xxxxxxx-xxxxx       1/1     Running   0
+pod/payment-service-xxxxxxx-yyyyy       1/1     Running   0
+
+NAME                      TYPE        CLUSTER-IP    PORT(S)
+service/payment-service   ClusterIP   10.96.x.x     80/TCP
+
+NAME                              READY   UP-TO-DATE   AVAILABLE
+deployment.apps/payment-service   2/2     2            2
+```
+
+---
+
+### Install Prod
+
+```bash
+helm install payment-service . \
+  -f values-prod.yaml \
+  --set secret.dbPassword="prod-secret-xyz" \
+  --namespace prod
+```
+
+Expected:
+
+```
+NAME: payment-service
+STATUS: deployed
+REVISION: 1
+```
+
+Verify:
+
+```bash
+kubectl get all -n prod
+```
+
+Expected:
+
+```
+NAME                                    READY   STATUS    RESTARTS
+pod/payment-service-xxxxxxx-xxxxx       1/1     Running   0
+... (5 pods — minReplicas)
+
+NAME                      TYPE        CLUSTER-IP    PORT(S)
+service/payment-service   ClusterIP   10.96.x.x     80/TCP
+
+NAME                              READY   UP-TO-DATE   AVAILABLE
+deployment.apps/payment-service   5/5     5            5
+
+NAME                                              REFERENCE                    TARGETS   MINPODS   MAXPODS
+horizontalpodautoscaler.autoscaling/payment-service   Deployment/payment-service   0%/70%    5         20
+```
+
+---
+
+## Step 15 — Test each environment
+
+### Dev — port 8080
+
+```bash
+kubectl port-forward svc/payment-service 8080:80 -n dev
+```
+
+Open new terminal:
+
+```bash
+curl http://localhost:8080
+```
+
+Expected:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+```
+
+Verify env vars injected inside pod:
+
+```bash
+kubectl exec -it \
+  $(kubectl get pod -n dev -o jsonpath='{.items[0].metadata.name}') \
+  -n dev -- env | grep -E "APP_ENV|LOG_LEVEL|DB_PASSWORD"
+```
+
+Expected:
+
+```
+APP_ENV=dev
+LOG_LEVEL=info
+DB_PASSWORD=dev-password-123
+```
+
+Verify liveness and readiness probes:
+
+```bash
+kubectl describe pod -n dev | grep -A5 "Liveness\|Readiness"
+```
+
+Expected:
+
+```
+Liveness:   http-get http://:http/ delay=0s timeout=1s period=10s
+Readiness:  http-get http://:http/ delay=0s timeout=1s period=10s
+```
+
+---
+
+### QA — port 7070
+
+```bash
+kubectl port-forward svc/payment-service 7070:80 -n qa
+```
+
+Open new terminal:
+
+```bash
+curl http://localhost:7070
+```
+
+Expected:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+```
+
+Verify env vars:
+
+```bash
+kubectl exec -it \
+  $(kubectl get pod -n qa -o jsonpath='{.items[0].metadata.name}') \
+  -n qa -- env | grep -E "APP_ENV|LOG_LEVEL|DB_PASSWORD"
+```
+
+Expected:
+
+```
+APP_ENV=qa
+LOG_LEVEL=info
+DB_PASSWORD=qa-password-456
+```
+
+Verify probes:
+
+```bash
+kubectl describe pod -n qa | grep -A5 "Liveness\|Readiness"
+```
+
+Expected:
+
+```
+Liveness:   http-get http://:http/ delay=0s timeout=1s period=10s
+Readiness:  http-get http://:http/ delay=0s timeout=1s period=10s
+```
+
+---
+
+### Prod — port 6060
+
+```bash
+kubectl port-forward svc/payment-service 6060:80 -n prod
+```
+
+Open new terminal:
+
+```bash
+curl http://localhost:6060
+```
+
+Expected:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+```
+
+Verify env vars:
+
+```bash
+kubectl exec -it \
+  $(kubectl get pod -n prod -o jsonpath='{.items[0].metadata.name}') \
+  -n prod -- env | grep -E "APP_ENV|LOG_LEVEL|DB_PASSWORD"
+```
+
+Expected:
+
+```
+APP_ENV=prod
+LOG_LEVEL=info
+DB_PASSWORD=prod-secret-xyz
+```
+
+Verify probes:
+
+```bash
+kubectl describe pod -n prod | grep -A5 "Liveness\|Readiness"
+```
+
+Expected:
+
+```
+Liveness:   http-get http://:http/ delay=0s timeout=1s period=10s
+Readiness:  http-get http://:http/ delay=0s timeout=1s period=10s
+```
+
+Verify HPA is active:
+
+```bash
+kubectl get hpa -n prod
+```
+
+Expected:
+
+```
+NAME              REFERENCE                    TARGETS   MINPODS   MAXPODS   REPLICAS
+payment-service   Deployment/payment-service   0%/70%    5         20        5
+```
+
+---
+
+## Step 16 — Upgrade test
+
+Change replica count on dev and upgrade:
+
+```bash
+helm upgrade payment-service . \
+  -f values-dev.yaml \
+  --set replicaCount=3 \
+  --namespace dev
+```
+
+Verify:
+
+```bash
+kubectl get deploy -n dev
 ```
 
 Expected:
@@ -544,22 +818,36 @@ payment-service   3/3     3            3
 
 ---
 
-## Step 16 — Uninstall
+## Step 17 — Uninstall all environments
 
 ```bash
-helm uninstall payment-service
-```
-
-Verify everything removed:
-
-```bash
-kubectl get all
+helm uninstall payment-service -n dev
+helm uninstall payment-service -n qa
+helm uninstall payment-service -n prod
 ```
 
 Expected:
 
 ```
-No resources found in default namespace.
+release "payment-service" uninstalled
+release "payment-service" uninstalled
+release "payment-service" uninstalled
+```
+
+Verify everything removed:
+
+```bash
+kubectl get all -n dev
+kubectl get all -n qa
+kubectl get all -n prod
+```
+
+Expected:
+
+```
+No resources found in dev namespace.
+No resources found in qa namespace.
+No resources found in prod namespace.
 ```
 
 ---
@@ -568,7 +856,9 @@ No resources found in default namespace.
 
 | Feature | dev | qa | prod |
 |---|---|---|---|
+| namespace | dev | qa | prod |
 | replicas | 1 (fixed) | 2 (fixed) | controlled by HPA |
+| port-forward | 8080 | 7070 | 6060 |
 | ingress | disabled | qa.example.com | prod.example.com |
 | HPA | disabled | disabled | min 5, max 20 |
 | resources | small | medium | large |
@@ -586,6 +876,10 @@ When HPA is enabled, having a fixed `replicas:` in the Deployment causes conflic
 
 `required` makes Helm fail at template time if no value is provided. In prod, `dbPassword` is empty in the values file — the real password is injected by CI/CD via `--set secret.dbPassword=$SECRET` so it never touches Git.
 
+### Why separate namespaces per environment
+
+Each environment is completely isolated — different namespace, different configs, different secrets. One cluster can host all three environments safely without them interfering with each other.
+
 ### Why one chart for all environments
 
 Same chart, different values files. This means one place to fix bugs, one place to add features, consistent resource definitions across all envs. GitOps-friendly — values files are committed, secrets are not.
@@ -594,4 +888,4 @@ Same chart, different values files. This means one place to fix bugs, one place 
 
 ## Interview answer (say this)
 
-> "I built a reusable Helm chart by parameterizing replicas, resources, ConfigMaps, Secrets, Ingress, and HPA through values files. Dev has 1 replica, no ingress, no autoscaling. QA has 2 replicas with ingress. Prod has HPA with min 5 and max 20 replicas — and when HPA is enabled, the replicas field is conditionally omitted from the Deployment using an if block so they don't conflict. Secrets use the required function so Helm fails loudly if no password is passed — the prod password is never in Git, it's injected at deploy time via --set from the CI/CD pipeline. I validate with helm lint and helm template before every deploy, and package with helm package for distribution."
+> "I built a reusable Helm chart by parameterizing replicas, resources, ConfigMaps, Secrets, Ingress, and HPA through values files. Each environment gets its own namespace — dev, qa, prod — for full isolation. Dev has 1 replica, no ingress, no autoscaling. QA has 2 replicas with ingress. Prod has HPA with min 5 and max 20 replicas — and when HPA is enabled, the replicas field is conditionally omitted from the Deployment using an if block so they don't conflict. Secrets use the required function so Helm fails loudly if no password is passed — the prod password is never in Git, it's injected at deploy time via --set from the CI/CD pipeline. I validate with helm lint and helm template before every deploy, test with port-forward to verify env vars and probes, and package with helm package for distribution."
