@@ -17,7 +17,7 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 | [Ex 06](./exercises/ex06-hpa-autoscaler-failure/) | HPA + Cluster Autoscaler Failure | Troubleshooting | 🔲 |
 | [Ex 09](./exercises/ex09-prometheus-failure/) | Prometheus Monitoring Failure | Troubleshooting | ✅ |
 | [Ex 11](./exercises/ex11-crashloopbackoff/) | CrashLoopBackOff Investigation | Troubleshooting | ✅ |
-| [Ex 12](./exercises/ex12-node-notready/) | Node NotReady — DiskPressure | Incident Recovery | 🔲 |
+| [Ex 12](./exercises/ex12-node-notready/) | Node NotReady — DiskPressure | Incident Recovery | ✅ |
 | [Ex 13](./exercises/ex13-secret-rotation/) | Secret Rotation Outage | Troubleshooting | 🔲 |
 | [Ex 14](./exercises/ex14-distributed-tracing/) | Distributed Tracing Investigation | Observability | 🔲 |
 | [Ex 15](./exercises/ex15-production-outage-rca/) | Complete Production Outage RCA | Full RCA | 🔲 |
