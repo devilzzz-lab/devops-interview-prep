@@ -1,0 +1,10 @@
+replicaCount: 1
+
+config:
+  APP_ENV: dev
+
+ingress:
+  enabled: false
+
+secret:
+  dbPassword: "dev-password-123"    

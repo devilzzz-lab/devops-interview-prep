@@ -1,0 +1,32 @@
+replicaCount: 5
+
+config:
+  APP_ENV: prod
+
+ingress:
+  enabled: true
+  className: nginx
+
+  hosts:
+    - host: prod.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+secret:
+  dbPassword: ""      # prod — pass password via --set (simulating what CI/CD does)
