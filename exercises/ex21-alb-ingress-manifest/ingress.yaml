@@ -1,0 +1,61 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: payment-platform-ingress
+  namespace: production
+  annotations:
+    # Tell Kubernetes to use AWS ALB controller
+    kubernetes.io/ingress.class: alb
+
+    # ALB listens on both 80 and 443
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+
+    # Redirect all HTTP traffic to HTTPS
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+
+    # Use ip mode — traffic goes directly to pod IPs
+    alb.ingress.kubernetes.io/target-type: ip
+
+    # Your ACM certificate ARN for SSL
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-1:123456789012:certificate/abc-123
+
+    # ALB scheme — internet-facing for public traffic
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # Health check settings per target group
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+
+spec:
+  rules:
+    - http:
+        paths:
+          # Route 1 — API service
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 8080
+
+          # Route 2 — Admin service
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-service
+                port:
+                  number: 9090
+
+          # Route 3 — Dashboard service
+          - path: /dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard-service
+                port:
+                  number: 3000

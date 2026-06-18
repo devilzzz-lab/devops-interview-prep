@@ -1,0 +1,50 @@
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: production
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+spec:
+  type: ClusterIP
+  selector:
+    app: api-service
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+# Admin Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-service
+  namespace: production
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /admin/health
+spec:
+  type: ClusterIP
+  selector:
+    app: admin-service
+  ports:
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+---
+# Dashboard Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+  namespace: production
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /dashboard/health
+spec:
+  type: ClusterIP
+  selector:
+    app: dashboard-service
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
