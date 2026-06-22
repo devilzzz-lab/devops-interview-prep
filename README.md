@@ -25,6 +25,7 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 | [Ex 18](./exercises/ex18-gitops-argocd/) | Gitops Platform using Argocd | Hands-on | ✅ |
 | [Ex 19](./exercises/ex19-helm-chart-engineering/) | Helm Chart Engineering | Hands-on | ✅ |
 | [Ex 21](./exercises/ex21-alb-ingress-manifest/) | ALB Ingress Manifest | Hands-on | ✅ |
+| [Ex 22](./exercises/ex22-autoscaling/) | HPA + Cluster Autoscaling | Hands-on | ✅ |
 
 ---
 
