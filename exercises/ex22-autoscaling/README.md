@@ -8,6 +8,9 @@
 
 Implement:
 
+Node autoscaling cannot be demonstrated on KIND because it has no cloud provider integration.
+EKS production version of Cluster Autoscaler manifest is provided: cluster-autoscaler-deployment.yaml.
+
 * Horizontal Pod Autoscaler (HPA)
 * Metrics Server
 * Load Testing
