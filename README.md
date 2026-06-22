@@ -22,6 +22,7 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 | [Ex 13](./exercises/ex13-secret-rotation/) | Secret Rotation Outage | Troubleshooting | ✅ |
 | [Ex 14](./exercises/ex14-distributed-tracing/) | Distributed Tracing Investigation | Observability | 🔲 |
 | [Ex 15](./exercises/ex15-production-outage-rca/) | Complete Production Outage RCA | Full RCA | ✅ |
+| [Ex 18](./exercises/ex18-gitops-argocd/) | Gitops Platform using Argocd | Hands-on | ✅ |
 | [Ex 19](./exercises/ex19-helm-chart-engineering/) | Helm Chart Engineering | Hands-on | ✅ |
 | [Ex 21](./exercises/ex21-alb-ingress-manifest/) | ALB Ingress Manifest | Hands-on | ✅ |
 
