@@ -442,3 +442,115 @@ git push origin main
 ## Interview answer (say this)
 
 "I integrated AWS Secrets Manager with Kubernetes using the External Secrets Operator. I stored DB_USERNAME, DB_PASSWORD, and JWT_SECRET as a single JSON secret in AWS Secrets Manager. Then I deployed ESO via Helm, created a SecretStore that tells ESO how to authenticate to AWS, and created an ExternalSecret that maps each JSON field to a key in a Kubernetes Secret. ESO automatically creates and syncs the K8s Secret — if I update the value in AWS, ESO picks it up on the next refresh cycle, or I can force an immediate sync with an annotation. On a kind cluster I used an AWS credentials secret for auth — on EKS this would be replaced with IRSA so there are zero static keys anywhere."
+
+---
+
+## Fix: CRDs not found after Helm install
+
+If you see:
+```text
+no matches for kind "SecretStore" in version "external-secrets.io/v1beta1"
+ensure CRDs are installed first
+```
+
+Run this:
+
+```bash
+# Reinstall ESO with CRDs explicitly enabled
+helm upgrade --install external-secrets \
+  external-secrets/external-secrets \
+  --namespace external-secrets \
+  --create-namespace \
+  --set installCRDs=true \
+  --wait
+```
+
+Verify CRDs are now present:
+
+```bash
+kubectl get crds | grep external-secrets
+```
+
+Expected:
+
+```text
+externalsecrets.external-secrets.io
+secretstores.external-secrets.io
+clustersecretstores.external-secrets.io
+...
+```
+
+Then re-apply:
+
+```bash
+kubectl apply -f k8s/secret-store.yaml
+kubectl apply -f k8s/external-secret.yaml
+```
+
+---
+
+## Fix: apiVersion v1beta1 → v1 (newer ESO versions)
+
+If you see:
+```text
+no matches for kind "SecretStore" in version "external-secrets.io/v1beta1"
+```
+
+Check what version your ESO uses:
+```bash
+kubectl api-resources | grep external-secrets
+# Look at the VERSION column — if it shows v1 not v1beta1, run the fix below
+```
+
+Fix both files in one shot:
+```bash
+sed -i '' 's|external-secrets.io/v1beta1|external-secrets.io/v1|g' k8s/secret-store.yaml
+sed -i '' 's|external-secrets.io/v1beta1|external-secrets.io/v1|g' k8s/external-secret.yaml
+
+# Verify
+head -3 k8s/secret-store.yaml
+head -3 k8s/external-secret.yaml
+```
+
+Then re-apply:
+```bash
+kubectl apply -f k8s/secret-store.yaml
+kubectl apply -f k8s/external-secret.yaml
+```
+
+---
+
+## Fix: Bonus pod test — --env-from flag doesn't exist in kubectl run
+
+Use a pod manifest with `envFrom` instead:
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secret-test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test
+      image: busybox
+      command: ["sh", "-c", "echo DB_USERNAME=\$DB_USERNAME && echo DB_PASSWORD=\$DB_PASSWORD && echo JWT_SECRET=\$JWT_SECRET"]
+      envFrom:
+        - secretRef:
+            name: app-secret
+EOF
+
+# Check logs
+kubectl logs secret-test
+
+# Cleanup
+kubectl delete pod secret-test
+```
+
+Expected:
+```text
+DB_USERNAME=admin
+DB_PASSWORD=SuperSecurePass123!
+JWT_SECRET=myjwtsecretkey-do-not-expose
+```
