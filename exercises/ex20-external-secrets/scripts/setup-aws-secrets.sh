@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGION="us-east-1"
-SECRET_NAME="ex20/app/secrets"
+SECRET_NAME="ex20/app/secret"
 
 echo "==> Creating secret in AWS Secrets Manager..."
 

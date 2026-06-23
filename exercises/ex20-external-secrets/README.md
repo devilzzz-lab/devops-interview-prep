@@ -182,27 +182,6 @@ The `SecretStore` tells ESO **how to connect to AWS** and **which region** to us
 
 ### k8s/secret-store.yaml
 
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: SecretStore
-metadata:
-  name: aws-secret-store
-  namespace: default
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: us-east-1
-      auth:
-        secretRef:
-          accessKeyIDSecretRef:
-            name: aws-credentials
-            key: access-key
-          secretAccessKeySecretRef:
-            name: aws-credentials
-            key: secret-access-key
-```
-
 Apply it:
 
 ```bash
@@ -230,40 +209,6 @@ The `ExternalSecret` tells ESO **which secret to fetch** from AWS and **what to 
 
 ### k8s/external-secret.yaml
 
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: app-external-secret
-  namespace: default
-spec:
-  refreshInterval: 1h                    # ESO re-syncs every 1 hour
-
-  secretStoreRef:
-    name: aws-secret-store               # points to our SecretStore
-    kind: SecretStore
-
-  target:
-    name: app-secret                     # name of the K8s Secret to create
-    creationPolicy: Owner                # ESO owns it — deletes it if ExternalSecret is deleted
-
-  data:
-    - secretKey: DB_USERNAME             # key inside the K8s Secret
-      remoteRef:
-        key: ex20/app/secrets            # AWS secret name
-        property: DB_USERNAME            # JSON field inside the AWS secret
-
-    - secretKey: DB_PASSWORD
-      remoteRef:
-        key: ex20/app/secrets
-        property: DB_PASSWORD
-
-    - secretKey: JWT_SECRET
-      remoteRef:
-        key: ex20/app/secrets
-        property: JWT_SECRET
-```
-
 Apply it:
 
 ```bash
@@ -275,48 +220,6 @@ kubectl apply -f k8s/external-secret.yaml
 ## Step 8 — Validate (the required checks)
 
 ### scripts/validate.sh
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-echo "============================================"
-echo " 1. kubectl get externalsecret"
-echo "============================================"
-kubectl get externalsecret -n default
-
-echo ""
-echo "============================================"
-echo " 2. kubectl get secret"
-echo "============================================"
-kubectl get secret app-secret -n default
-
-echo ""
-echo "============================================"
-echo " 3. ExternalSecret detailed status"
-echo "============================================"
-kubectl describe externalsecret app-external-secret -n default \
-  | grep -A 10 "Status:"
-
-echo ""
-echo "============================================"
-echo " 4. Decode and verify secret values"
-echo "============================================"
-echo -n "DB_USERNAME : "
-kubectl get secret app-secret -n default \
-  -o jsonpath='{.data.DB_USERNAME}' | base64 -d
-echo ""
-
-echo -n "DB_PASSWORD : "
-kubectl get secret app-secret -n default \
-  -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
-echo ""
-
-echo -n "JWT_SECRET  : "
-kubectl get secret app-secret -n default \
-  -o jsonpath='{.data.JWT_SECRET}' | base64 -d
-echo ""
-```
 
 Run it:
 
@@ -364,46 +267,21 @@ JWT_SECRET  : myjwtsecretkey-do-not-expose
 
 This proves the K8s Secret works end-to-end in a real pod:
 
+Apply it:
+
 ```bash
-kubectl run secret-test \
-  --image=busybox \
-  --restart=Never \
-  --rm -it \
-  --env-from=secret:app-secret \
-  -- sh -c 'echo "DB_USERNAME=$DB_USERNAME | DB_PASSWORD=$DB_PASSWORD | JWT_SECRET=$JWT_SECRET"'
+kubectl apply -f k8s/test-pod.yaml
 ```
 
 Expected:
 
 ```text
 DB_USERNAME=admin | DB_PASSWORD=SuperSecurePass123! | JWT_SECRET=myjwtsecretkey-do-not-expose
-pod "secret-test" deleted
 ```
 
 ---
 
 ## Step 10 — Test auto-sync (update secret in AWS, K8s updates too)
-
-```bash
-# Update the secret in AWS
-aws secretsmanager update-secret \
-  --secret-id ex20/app/secrets \
-  --region us-east-1 \
-  --secret-string '{
-    "DB_USERNAME": "admin",
-    "DB_PASSWORD": "NewPassword456!",
-    "JWT_SECRET": "myjwtsecretkey-do-not-expose"
-  }'
-
-# Force immediate sync (instead of waiting 1h)
-kubectl annotate externalsecret app-external-secret \
-  force-sync=$(date +%s) --overwrite -n default
-
-# Wait a few seconds then verify
-sleep 5
-kubectl get secret app-secret -n default \
-  -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
-```
 
 Expected:
 
@@ -516,41 +394,4 @@ Then re-apply:
 ```bash
 kubectl apply -f k8s/secret-store.yaml
 kubectl apply -f k8s/external-secret.yaml
-```
-
----
-
-## Fix: Bonus pod test — --env-from flag doesn't exist in kubectl run
-
-Use a pod manifest with `envFrom` instead:
-
-```bash
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: secret-test
-spec:
-  restartPolicy: Never
-  containers:
-    - name: test
-      image: busybox
-      command: ["sh", "-c", "echo DB_USERNAME=\$DB_USERNAME && echo DB_PASSWORD=\$DB_PASSWORD && echo JWT_SECRET=\$JWT_SECRET"]
-      envFrom:
-        - secretRef:
-            name: app-secret
-EOF
-
-# Check logs
-kubectl logs secret-test
-
-# Cleanup
-kubectl delete pod secret-test
-```
-
-Expected:
-```text
-DB_USERNAME=admin
-DB_PASSWORD=SuperSecurePass123!
-JWT_SECRET=myjwtsecretkey-do-not-expose
 ```
