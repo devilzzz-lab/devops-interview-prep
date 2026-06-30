@@ -16,6 +16,7 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 | [Ex 07](./exercises/ex07-alb-ingress-failure/) | Kubernetes Ingress + ALB | Troubleshooting | ✅ |
 | [Ex 08](./exercises/ex08-egress-failure/) |  Egress Restriction Incident | Troubleshooting | ✅ |
 | [Ex 09](./exercises/ex09-prometheus-failure/) | Prometheus Monitoring Failure | Troubleshooting | ✅ |
+| [Ex 10](./exercises/ex10-loki-log-failure/) | Loki Logging Failure | Troubleshooting | ✅ |
 | [Ex 11](./exercises/ex11-crashloopbackoff/) | CrashLoopBackOff Investigation | Troubleshooting | ✅ |
 | [Ex 12](./exercises/ex12-node-notready/) | Node NotReady — DiskPressure | Incident Recovery | ✅ |
 | [Ex 13](./exercises/ex13-secret-rotation/) | Secret Rotation Outage | Troubleshooting | ✅ |
