@@ -116,11 +116,55 @@ alertmanager-monitoring-kube-prometheus-alertmanager-0     2/2     Running
 
 ## Step 4 — Install Loki
 
+The original `loki-stack` chart runs Loki in distributed/ring mode by default, which is unstable on single-node kind clusters (see known issues below). Use the newer `loki` chart in `SingleBinary` mode instead, which is the correct setup for local testing.
+
 ```bash
-helm install loki grafana/loki-stack \
+cat > loki-values.yaml << 'EOF'
+deploymentMode: SingleBinary
+
+loki:
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  auth_enabled: false
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+singleBinary:
+  replicas: 1
+
+chunksCache:
+  enabled: false
+
+resultsCache:
+  enabled: false
+
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+grafana:
+  enabled: false
+
+sidecar:
+  datasources:
+    enabled: false
+EOF
+
+helm install loki grafana/loki \
   --namespace monitoring-stack \
-  --set grafana.enabled=false \
-  --set prometheus.enabled=false
+  -f loki-values.yaml
 ```
 
 Expected:
@@ -140,14 +184,23 @@ Expected:
 
 ```
 loki-0                          1/1     Running
-loki-promtail-xxxxx             1/1     Running
 ```
 
-Note: loki-stack ships with Promtail by default. Alloy is added separately in the next step since this exercise specifically asks for Alloy.
+Test the ready endpoint:
 
-### Known issue — Grafana CrashLoopBackOff after installing Loki
+```bash
+kubectl run -it --rm debug --image=curlimages/curl -n monitoring-stack -- curl http://loki:3100/ready
+```
 
-If you install `loki-stack` with default settings, it creates its own Grafana datasource configmap (`loki-loki-stack`) labeled `grafana_datasource=1`, even with `grafana.enabled=false`. Grafana's sidecar picks up datasource configmaps from every matching label across the namespace, including this one and the one from `kube-prometheus-stack`. If both end up marked as default, Grafana crashes on startup with:
+Expected:
+
+```
+ready
+```
+
+### Known issue 1 — Grafana CrashLoopBackOff from duplicate default datasource
+
+If you install Loki with `grafana.sidecar.datasources.enabled` left at its default, it creates its own Grafana datasource configmap labeled `grafana_datasource=1`, separate from the one created by `kube-prometheus-stack`. Grafana's sidecar watches the whole namespace for that label, picks up both, and if both end up marked default, Grafana crashes on startup with:
 
 ```
 Datasource provisioning error: datasource.yaml config is invalid.
@@ -160,28 +213,18 @@ Confirm this is the cause:
 kubectl get configmap --all-namespaces -l grafana_datasource=1
 ```
 
-If you see two configmaps in `monitoring-stack` (one from `loki-loki-stack`, one from `monitoring-kube-prometheus-grafana-datasource`), that is the conflict.
+If you see two configmaps in `monitoring-stack`, that is the conflict. Fixed in the values file above by setting `sidecar.datasources.enabled: false` — Loki is added manually as a data source in Grafana instead (Step 9 below).
 
-Fix — uninstall and reinstall Loki with its datasource sidecar disabled:
+### Known issue 2 — Loki ring health failure on single-node kind clusters
 
-```bash
-helm uninstall loki -n monitoring-stack
+Running the older `loki-stack` chart with default settings puts Loki in distributed ring mode even with one replica. On resource-constrained kind clusters the ring heartbeat can fail intermittently, even though Loki is actually serving traffic fine. This shows up as:
 
-kubectl delete pod -n monitoring-stack -l app.kubernetes.io/name=grafana
-
-helm install loki grafana/loki-stack \
-  --namespace monitoring-stack \
-  --set grafana.enabled=false \
-  --set grafana.sidecar.datasources.enabled=false
+```
+level=warn msg="POST /loki/api/v1/push (500) ... Response: \"at least 1 live replicas required,
+could only find 0 - unhealthy instances: 10.244.0.53:9095\""
 ```
 
-This stops Loki from auto-provisioning a Grafana datasource. Loki is added manually as a data source in Grafana instead, in Step 9 below. Verify Grafana recovers:
-
-```bash
-kubectl get pods -n monitoring-stack -w | grep grafana
-```
-
-Expected: `monitoring-grafana-xxxxxxxxx   3/3   Running`
+`curl http://loki:3100/ready` returns `ready` even while this is happening, which makes it confusing, the HTTP endpoint is up but writes fail because the ring thinks there are zero healthy ingesters. Fixed by switching to the `loki` chart with `deploymentMode: SingleBinary`, which skips the distributed ring requirement entirely and is the right mode for local/single-node testing.
 
 ---
 
@@ -341,10 +384,24 @@ Expected: `Data source connected and labels found.`
 
 For Tempo:
 1. Add data source, select Tempo
-2. URL: `http://tempo:3100`
+2. URL: `http://tempo:3200`
 3. Click Save and test
 
 Expected: `Data source connected.`
+
+Note: Tempo exposes several ports for different protocols (3100 in some setups is mistaken for the query API, but that is actually Loki's port). The correct query/HTTP API port for Tempo is `3200`. Using `http://tempo:3100` causes:
+
+```
+Get "http://tempo:3100/api/echo": dial tcp 10.96.x.x:3100: i/o timeout
+```
+
+Confirm the right port from the service itself before configuring the data source:
+
+```bash
+kubectl get svc -n monitoring-stack | grep tempo
+```
+
+Look for `3200/TCP` in the port list, that is the one Grafana needs.
 
 ---
 
@@ -479,9 +536,13 @@ Alloy is Grafana's newer unified collector that can ship logs, metrics, and trac
 
 A real debugging flow: a CPU spike shows up in a Prometheus metric panel. You jump to Loki to see error logs from that exact time window. You then jump to Tempo to see which specific request triggered the spike, end to end across services. This is why all three are connected as data sources in the same Grafana instance.
 
-### Real incident hit during this exercise — Grafana CrashLoopBackOff
+### Real issues hit during this exercise
 
-While deploying this stack, Grafana crashed with `Only one datasource per organization can be marked as default`. Root cause: both `kube-prometheus-stack` and `loki-stack` create their own Grafana sidecar-discovered datasource configmaps, and both were marked `isDefault: true`. Grafana's sidecar watches the whole namespace for any configmap labeled `grafana_datasource=1`, so it picked up both and refused to start. Fixed by disabling Loki's datasource sidecar (`grafana.sidecar.datasources.enabled=false`) and adding Loki as a data source manually through the Grafana UI instead. This is a good story for an interview — it shows real debugging of a multi-chart Helm conflict, not just following steps.
+Three real problems came up while deploying this stack, all worth mentioning in an interview as proof of actual debugging, not just following steps:
+
+1. Grafana CrashLoopBackOff from two charts each provisioning a default datasource configmap. Fixed by disabling Loki's datasource sidecar and adding it manually in the UI.
+2. Loki ring health failures (`at least 1 live replicas required, could only find 0`) on a single-node kind cluster, even though the HTTP `/ready` endpoint reported healthy. Fixed by switching to `deploymentMode: SingleBinary`, which skips the distributed ring mechanism entirely.
+3. Tempo data source connection timeout in Grafana (`dial tcp ...:3100: i/o timeout`) caused by using the wrong port. Tempo exposes many ports for different trace ingestion protocols, but the query/HTTP API that Grafana needs is `3200`, not `3100`. Confirmed the correct port with `kubectl get svc` before fixing the data source URL.
 
 ---
 
@@ -490,17 +551,17 @@ While deploying this stack, Grafana crashed with `Only one datasource per organi
 ```
 Prometheus  - collecting metrics from cluster                    done
 Grafana     - dashboards built and data sources connected        done
-Loki        - log storage running                                done
+Loki        - log storage running in SingleBinary mode           done
 Alloy       - shipping container logs to Loki                    done
-Tempo       - trace storage running                              done
+Tempo       - trace storage running, connected on correct port   done
 Dashboards  - CPU, Memory, Error Rate, Request Rate panels        done
-Debugging   - resolved a real Grafana datasource conflict         done
+Debugging   - resolved 3 real multi-chart Helm conflicts          done
 ```
 
 ---
 
 ## Interview answer (say this)
 
-> "I deployed a full observability stack on Kubernetes using Helm: kube-prometheus-stack for metrics and Grafana, loki-stack for log storage, Alloy as the log shipping agent that tails container logs and forwards them to Loki, and Tempo for distributed trace storage. Grafana is configured with all three as data sources so I can correlate metrics, logs, and traces in one place. For example, seeing a CPU spike in a metric panel, then jumping to Loki to see the error logs from that exact time window, then to Tempo to see which specific request caused it. I built dashboards covering CPU, memory, error rate, and request rate using PromQL queries against container and application metrics.
+> "I deployed a full observability stack on Kubernetes using Helm: kube-prometheus-stack for metrics and Grafana, the Loki chart in SingleBinary mode for log storage, Alloy as the log shipping agent that tails container logs and forwards them to Loki, and Tempo for distributed trace storage. Grafana is configured with all three as data sources so I can correlate metrics, logs, and traces in one place. For example, seeing a CPU spike in a metric panel, then jumping to Loki to see the error logs from that exact time window, then to Tempo to see which specific request caused it. I built dashboards covering CPU, memory, error rate, and request rate using PromQL queries against container and application metrics.
 >
-> During setup I actually hit a real issue — Grafana went into CrashLoopBackOff because both the Prometheus chart and the Loki chart were each provisioning their own default datasource configmap, and Grafana's sidecar picked up both, causing a conflict since only one datasource can be the default. I diagnosed it by checking the configmaps labeled for the Grafana sidecar across the namespace, found the duplicate, and fixed it by disabling Loki's datasource sidecar and adding it manually in the UI instead."
+> During setup I hit three real issues. First, Grafana crashed in a loop because both the Prometheus chart and the Loki chart were each provisioning their own default datasource configmap, and Grafana's sidecar picked up both — fixed by disabling Loki's datasource sidecar and adding it manually. Second, Loki kept failing writes with a ring health error even though its HTTP endpoint reported ready — the default loki-stack chart runs in distributed ring mode even with one replica, which is unstable on a single-node kind cluster, so I switched to SingleBinary deployment mode, which skips the ring requirement entirely. Third, Tempo's data source kept timing out in Grafana because I was using port 3100, which is actually Loki's port — Tempo's query API runs on 3200, confirmed by checking the service ports directly."
