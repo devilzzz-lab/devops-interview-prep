@@ -145,6 +145,44 @@ loki-promtail-xxxxx             1/1     Running
 
 Note: loki-stack ships with Promtail by default. Alloy is added separately in the next step since this exercise specifically asks for Alloy.
 
+### Known issue — Grafana CrashLoopBackOff after installing Loki
+
+If you install `loki-stack` with default settings, it creates its own Grafana datasource configmap (`loki-loki-stack`) labeled `grafana_datasource=1`, even with `grafana.enabled=false`. Grafana's sidecar picks up datasource configmaps from every matching label across the namespace, including this one and the one from `kube-prometheus-stack`. If both end up marked as default, Grafana crashes on startup with:
+
+```
+Datasource provisioning error: datasource.yaml config is invalid.
+Only one datasource per organization can be marked as default
+```
+
+Confirm this is the cause:
+
+```bash
+kubectl get configmap --all-namespaces -l grafana_datasource=1
+```
+
+If you see two configmaps in `monitoring-stack` (one from `loki-loki-stack`, one from `monitoring-kube-prometheus-grafana-datasource`), that is the conflict.
+
+Fix — uninstall and reinstall Loki with its datasource sidecar disabled:
+
+```bash
+helm uninstall loki -n monitoring-stack
+
+kubectl delete pod -n monitoring-stack -l app.kubernetes.io/name=grafana
+
+helm install loki grafana/loki-stack \
+  --namespace monitoring-stack \
+  --set grafana.enabled=false \
+  --set grafana.sidecar.datasources.enabled=false
+```
+
+This stops Loki from auto-provisioning a Grafana datasource. Loki is added manually as a data source in Grafana instead, in Step 9 below. Verify Grafana recovers:
+
+```bash
+kubectl get pods -n monitoring-stack -w | grep grafana
+```
+
+Expected: `monitoring-grafana-xxxxxxxxx   3/3   Running`
+
 ---
 
 ## Step 5 — Install Alloy (log shipping agent)
@@ -441,6 +479,10 @@ Alloy is Grafana's newer unified collector that can ship logs, metrics, and trac
 
 A real debugging flow: a CPU spike shows up in a Prometheus metric panel. You jump to Loki to see error logs from that exact time window. You then jump to Tempo to see which specific request triggered the spike, end to end across services. This is why all three are connected as data sources in the same Grafana instance.
 
+### Real incident hit during this exercise — Grafana CrashLoopBackOff
+
+While deploying this stack, Grafana crashed with `Only one datasource per organization can be marked as default`. Root cause: both `kube-prometheus-stack` and `loki-stack` create their own Grafana sidecar-discovered datasource configmaps, and both were marked `isDefault: true`. Grafana's sidecar watches the whole namespace for any configmap labeled `grafana_datasource=1`, so it picked up both and refused to start. Fixed by disabling Loki's datasource sidecar (`grafana.sidecar.datasources.enabled=false`) and adding Loki as a data source manually through the Grafana UI instead. This is a good story for an interview — it shows real debugging of a multi-chart Helm conflict, not just following steps.
+
 ---
 
 ## What you proved in this exercise
@@ -452,10 +494,13 @@ Loki        - log storage running                                done
 Alloy       - shipping container logs to Loki                    done
 Tempo       - trace storage running                              done
 Dashboards  - CPU, Memory, Error Rate, Request Rate panels        done
+Debugging   - resolved a real Grafana datasource conflict         done
 ```
 
 ---
 
 ## Interview answer (say this)
 
-> "I deployed a full observability stack on Kubernetes using Helm: kube-prometheus-stack for metrics and Grafana, loki-stack for log storage, Alloy as the log shipping agent that tails container logs and forwards them to Loki, and Tempo for distributed trace storage. Grafana is configured with all three as data sources so I can correlate metrics, logs, and traces in one place. For example, seeing a CPU spike in a metric panel, then jumping to Loki to see the error logs from that exact time window, then to Tempo to see which specific request caused it. I built dashboards covering CPU, memory, error rate, and request rate using PromQL queries against container and application metrics."
+> "I deployed a full observability stack on Kubernetes using Helm: kube-prometheus-stack for metrics and Grafana, loki-stack for log storage, Alloy as the log shipping agent that tails container logs and forwards them to Loki, and Tempo for distributed trace storage. Grafana is configured with all three as data sources so I can correlate metrics, logs, and traces in one place. For example, seeing a CPU spike in a metric panel, then jumping to Loki to see the error logs from that exact time window, then to Tempo to see which specific request caused it. I built dashboards covering CPU, memory, error rate, and request rate using PromQL queries against container and application metrics.
+>
+> During setup I actually hit a real issue — Grafana went into CrashLoopBackOff because both the Prometheus chart and the Loki chart were each provisioning their own default datasource configmap, and Grafana's sidecar picked up both, causing a conflict since only one datasource can be the default. I diagnosed it by checking the configmaps labeled for the Grafana sidecar across the namespace, found the duplicate, and fixed it by disabling Loki's datasource sidecar and adding it manually in the UI instead."
