@@ -26,6 +26,7 @@ Production-grade EKS/AWS troubleshooting exercises and answer guides.
 | [Ex 21](./exercises/ex21-alb-ingress-manifest/) | ALB Ingress Manifest | Hands-on | ✅ |
 | [Ex 22](./exercises/ex22-autoscaling/) | HPA + Cluster Autoscaling | Hands-on | ✅ |
 | [Ex 24](./exercises/ex24-dynamodb-irsa/) | DynamoDB Application Deployment (IRSA) | Hands-on | ✅ |
+| [Ex 25](./exercises/ex25-observability/) | Observability Platform Deployment | Hands-on | ✅ |
 | [Ex 26](./exercises/ex26-s3-backup/) | S3 Backup Solution | Hands-on | ✅ |
 
 ---
